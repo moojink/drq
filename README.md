@@ -30,6 +30,10 @@ We assume you have access to a gpu that can run CUDA 9.2. Then, the simplest way
 ```
 conda env create -f conda_env.yml
 ```
+Note (Moo Jin): You might need to downgrade PyTorch and CUDA by running the following command:
+```
+conda install pytorch==1.7.1 torchvision==0.8.2 torchaudio==0.7.2 cudatoolkit=2 -c pytorch
+```
 After the instalation ends you can activate your environment with
 ```
 conda activate drq
@@ -41,6 +45,8 @@ To train the DrQ agent on the `Cartpole Swingup` task run
 python train.py env=cartpole_swingup
 ```
 **you can get the state-of-the-art performance in under 3 hours.**
+
+\* Note (Moo Jin): If you get errors saying modules aren't found (e.g., torchvision), then the pip installations in `conda_env.yml` probably didn't work correctly. You might need to manually `pip install` everything under `pip:` in `conda_env.yml`.
 
 To reproduce the results from the paper run
 ```
