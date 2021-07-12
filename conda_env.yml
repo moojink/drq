@@ -23,7 +23,7 @@ dependencies:
     - tqdm
     - torchvision
     - yapf
-    - mujoco_py
+    # - mujoco_py
     - sklearn
     - matplotlib
     - kornia
