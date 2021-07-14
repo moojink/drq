@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -305,3 +306,19 @@ class DRQAgent(object):
         if step % self.critic_target_update_frequency == 0:
             utils.soft_update_params(self.critic, self.critic_target,
                                      self.critic_tau)
+
+    def save_checkpoint(self, log_dir, step):
+        torch.save(
+            {
+                'step': step,
+                'actor_state_dict': self.actor.state_dict(),
+                'critic_state_dict': self.critic.state_dict(),
+                'actor_optimizer_state_dict': self.actor_optimizer.state_dict(),
+                'critic_optimizer_state_dict': self.critic_optimizer.state_dict(),
+                'log_alpha_optimizer_state_dict': self.log_alpha_optimizer.state_dict(),
+            },
+            os.path.join(log_dir, str(step) + '.ckpt')
+        )
+
+    def load_checkpoint(self, checkpoint_step):
+        pass

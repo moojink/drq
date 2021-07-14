@@ -1,5 +1,7 @@
 # env
 env: PandaEnv-v0
+use_view_1: true
+use_view_3: true
 # IMPORTANT: if action_repeat is used the effective number of env steps needs to be
 # multiplied by action_repeat in the result graphs.
 # This is a common practice for a fair comparison.
@@ -13,7 +15,7 @@ num_seed_steps: 1000
 replay_buffer_capacity: 100000
 seed: 1
 # eval
-eval_frequency: 5000
+eval_frequency: 1000
 num_eval_episodes: 10
 # misc
 log_frequency_step: 10000
@@ -77,4 +79,4 @@ encoder:
 hydra:
   name: ${env}
   run:
-    dir: ./logs/drq/${now:%Y.%m.%d}/${now:%H%M%S}_${hydra.job.override_dirname}
+    dir: ./logs/drq/
