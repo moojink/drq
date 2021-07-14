@@ -27,3 +27,5 @@ dependencies:
     - sklearn
     - matplotlib
     - kornia
+    - pybullet
+    - numpy==1.21.0
