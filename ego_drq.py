@@ -29,8 +29,15 @@ class Encoder(nn.Module):
             nn.Conv2d(self.num_filters, self.num_filters, 3, stride=1)
         ])
 
+        if obs_shape[1] == 84: # DeepMind control suite images are 84x84
+            conv_out_size = 35
+        elif obs_shape[1] == 128: # our ego panda env images are 128x128
+            conv_out_size = 57
+        else:
+            raise ValueError("Unsupported image size.")
+
         self.head = nn.Sequential(
-            nn.Linear(self.num_filters * 35 * 35, self.feature_dim),
+            nn.Linear(self.num_filters * conv_out_size * conv_out_size, self.feature_dim),
             nn.LayerNorm(self.feature_dim))
 
         self.outputs = dict()

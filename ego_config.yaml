@@ -9,21 +9,21 @@ use_view_3: true
 # See Dreamer TF2's implementation: https://github.com/danijar/dreamer/blob/02f0210f5991c7710826ca7881f19c64a012290c/dreamer.py#L340
 action_repeat: 4
 # train
-num_train_steps: 1000000
+num_train_steps: 150000
 num_train_iters: 1
 num_seed_steps: 1000
 replay_buffer_capacity: 100000
 seed: 1
 # eval
-eval_frequency: 1000
-num_eval_episodes: 10
+eval_frequency: 5000
+num_eval_episodes: 20
 # misc
 log_frequency_step: 10000
 log_save_tb: true
 save_video: true
 device: cuda
 # observation
-image_size: 84
+image_size: 128
 image_pad: 4
 frame_stack: 3
 # global params
@@ -79,4 +79,4 @@ encoder:
 hydra:
   name: ${env}
   run:
-    dir: ./logs/drq/
+    dir: ./logs/drq-v11/
