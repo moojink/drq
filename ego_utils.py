@@ -107,7 +107,7 @@ class FrameStack(gym.Wrapper):
             high=1,
             shape=((shp[0] * k,) + shp[1:]),
             dtype=env.observation_space['im_rgb'].dtype)
-        self._max_episode_steps = env._max_episode_steps
+        self._max_episode_steps = env.env._max_episode_steps
 
     def reset(self):
         obs = self.env.reset()
