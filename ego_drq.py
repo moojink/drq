@@ -88,22 +88,23 @@ class Encoder(nn.Module):
 class Actor(nn.Module):
     """torch.distributions implementation of an diagonal Gaussian policy."""
     def __init__(self, encoder_cfg, action_shape, hidden_dim, hidden_depth,
-                 log_std_bounds):
+                 log_std_bounds, proprio_obs_shape):
         super().__init__()
 
         self.encoder = hydra.utils.instantiate(encoder_cfg)
 
         self.log_std_bounds = log_std_bounds
-        self.trunk = utils.mlp(self.encoder.feature_dim, hidden_dim,
+        self.trunk = utils.mlp(self.encoder.feature_dim + proprio_obs_shape, hidden_dim,
                                2 * action_shape[0], hidden_depth)
 
         self.outputs = dict()
         self.apply(utils.weight_init)
 
     def forward(self, obs, detach_encoder=False):
-        obs = self.encoder(obs, detach=detach_encoder)
+        encoder_out = self.encoder(obs['im_rgb'], detach=detach_encoder)
+        obs_out = torch.cat((encoder_out, obs['ee_grip'], obs['ee_pos_rel_base'], obs['contact_flags']), dim=-1)
 
-        mu, log_std = self.trunk(obs).chunk(2, dim=-1)
+        mu, log_std = self.trunk(obs_out).chunk(2, dim=-1)
 
         # constrain log_std inside [log_std_min, log_std_max]
         log_std = torch.tanh(log_std)
@@ -129,24 +130,25 @@ class Actor(nn.Module):
 
 class Critic(nn.Module):
     """Critic network, employes double Q-learning."""
-    def __init__(self, encoder_cfg, action_shape, hidden_dim, hidden_depth):
+    def __init__(self, encoder_cfg, action_shape, hidden_dim, hidden_depth, proprio_obs_shape):
         super().__init__()
 
         self.encoder = hydra.utils.instantiate(encoder_cfg)
 
-        self.Q1 = utils.mlp(self.encoder.feature_dim + action_shape[0],
+        self.Q1 = utils.mlp(self.encoder.feature_dim + proprio_obs_shape + action_shape[0],
                             hidden_dim, 1, hidden_depth)
-        self.Q2 = utils.mlp(self.encoder.feature_dim + action_shape[0],
+        self.Q2 = utils.mlp(self.encoder.feature_dim + proprio_obs_shape + action_shape[0],
                             hidden_dim, 1, hidden_depth)
 
         self.outputs = dict()
         self.apply(utils.weight_init)
 
     def forward(self, obs, action, detach_encoder=False):
-        assert obs.size(0) == action.size(0)
-        obs = self.encoder(obs, detach=detach_encoder)
+        assert obs['im_rgb'].size(0) == action.size(0)
+        encoder_out = self.encoder(obs['im_rgb'], detach=detach_encoder)
+        obs_out = torch.cat((encoder_out, obs['ee_grip'], obs['ee_pos_rel_base'], obs['contact_flags']), dim=-1)
 
-        obs_action = torch.cat([obs, action], dim=-1)
+        obs_action = torch.cat([obs_out, action], dim=-1)
         q1 = self.Q1(obs_action)
         q2 = self.Q2(obs_action)
 
@@ -171,7 +173,7 @@ class Critic(nn.Module):
 
 class DRQAgent(object):
     """Data regularized Q: actor-critic method for learning from pixels."""
-    def __init__(self, obs_shape, action_shape, action_range, device,
+    def __init__(self, obs_shape, proprio_obs_shape, action_shape, action_range, device,
                  encoder_cfg, critic_cfg, actor_cfg, discount,
                  init_temperature, lr, actor_update_frequency, critic_tau,
                  critic_target_update_frequency, batch_size):
@@ -217,8 +219,20 @@ class DRQAgent(object):
         return self.log_alpha.exp()
 
     def act(self, obs, sample=False):
-        obs = torch.FloatTensor(obs).to(self.device)
-        obs = obs.unsqueeze(0)
+        img_obs = torch.FloatTensor(obs['im_rgb']).to(self.device)
+        img_obs = img_obs.unsqueeze(0)
+        ee_grip_obs = torch.FloatTensor(obs['ee_grip']).to(self.device)
+        ee_grip_obs = ee_grip_obs.unsqueeze(0)
+        ee_pos_rel_base_obs = torch.FloatTensor(obs['ee_pos_rel_base']).to(self.device)
+        ee_pos_rel_base_obs = ee_pos_rel_base_obs.unsqueeze(0)
+        contact_flags_obs = torch.FloatTensor(obs['contact_flags']).to(self.device)
+        contact_flags_obs = contact_flags_obs.unsqueeze(0)
+        obs = dict(
+            im_rgb = img_obs,
+            ee_grip = ee_grip_obs,
+            ee_pos_rel_base = ee_pos_rel_base_obs,
+            contact_flags = contact_flags_obs
+        )
         dist = self.actor(obs)
         action = dist.sample() if sample else dist.mean
         action = action.clamp(*self.action_range)

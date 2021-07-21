@@ -101,6 +101,9 @@ class FrameStack(gym.Wrapper):
         gym.Wrapper.__init__(self, env)
         self._k = k
         self._frames = deque([], maxlen=k)
+        self._ee_grip_stack = deque([], maxlen=k)
+        self._ee_pos_rel_base_stack = deque([], maxlen=k)
+        self._contact_flags_stack = deque([], maxlen=k)
         shp = env.observation_space['im_rgb'].shape
         self.observation_space = gym.spaces.Box(
             low=0,
@@ -113,16 +116,30 @@ class FrameStack(gym.Wrapper):
         obs = self.env.reset()
         for _ in range(self._k):
             self._frames.append(obs['im_rgb'])
+            self._ee_grip_stack.append(obs['ee_grip'])
+            self._ee_pos_rel_base_stack.append(obs['ee_pos_rel_base'])
+            self._contact_flags_stack.append(obs['contact_flags'])
         return self._get_obs()
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
         self._frames.append(obs['im_rgb'])
+        self._ee_grip_stack.append(obs['ee_grip'])
+        self._ee_pos_rel_base_stack.append(obs['ee_pos_rel_base'])
+        self._contact_flags_stack.append(obs['contact_flags'])
         return self._get_obs(), reward, done, info
 
     def _get_obs(self):
         assert len(self._frames) == self._k
-        return np.concatenate(list(self._frames), axis=0)
+        assert len(self._ee_grip_stack) == self._k
+        assert len(self._ee_pos_rel_base_stack) == self._k
+        assert len(self._contact_flags_stack) == self._k
+        return dict(
+            im_rgb=np.concatenate(list(self._frames), axis=0),
+            ee_grip=np.concatenate(list(self._ee_grip_stack), axis=0),
+            ee_pos_rel_base=np.concatenate(list(self._ee_pos_rel_base_stack), axis=0),
+            contact_flags=np.concatenate(list(self._contact_flags_stack), axis=0)
+        )
 
 
 class TanhTransform(pyd.transforms.Transform):
