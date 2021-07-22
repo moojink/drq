@@ -134,12 +134,11 @@ class FrameStack(gym.Wrapper):
         assert len(self._ee_grip_stack) == self._k
         assert len(self._ee_pos_rel_base_stack) == self._k
         assert len(self._contact_flags_stack) == self._k
-        return dict(
-            im_rgb=np.concatenate(list(self._frames), axis=0),
-            ee_grip=np.concatenate(list(self._ee_grip_stack), axis=0),
-            ee_pos_rel_base=np.concatenate(list(self._ee_pos_rel_base_stack), axis=0),
-            contact_flags=np.concatenate(list(self._contact_flags_stack), axis=0)
-        )
+        img_obs = np.concatenate(list(self._frames), axis=0)
+        ee_grip_obs = np.concatenate(list(self._ee_grip_stack), axis=0)
+        ee_pos_rel_base_obs = np.concatenate(list(self._ee_pos_rel_base_stack), axis=0)
+        contact_flags_obs = np.concatenate(list(self._contact_flags_stack), axis=0)
+        return img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs
 
 
 class TanhTransform(pyd.transforms.Transform):

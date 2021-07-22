@@ -17,8 +17,16 @@ class ReplayBuffer(object):
             nn.ReplicationPad2d(image_pad),
             kornia.augmentation.RandomCrop((obs_shape[-1], obs_shape[-1])))
 
-        self.obses = [0] * capacity # list of placeholders for observations
-        self.next_obses = [0] * capacity
+        self.img_obses = np.empty((capacity, *obs_shape), dtype=np.uint8)
+        self.ee_grip_obses = np.empty((capacity, 3), dtype=np.float32)
+        self.ee_pos_rel_base_obses = np.empty((capacity, 9), dtype=np.float32)
+        self.contact_flags_obses = np.empty((capacity, 6), dtype=np.float32)
+
+        self.next_img_obses = np.empty((capacity, *obs_shape), dtype=np.uint8)
+        self.next_ee_grip_obses = np.empty((capacity, 3), dtype=np.float32)
+        self.next_ee_pos_rel_base_obses = np.empty((capacity, 9), dtype=np.float32)
+        self.next_contact_flags_obses = np.empty((capacity, 6), dtype=np.float32)
+
         self.actions = np.empty((capacity, *action_shape), dtype=np.float32)
         self.rewards = np.empty((capacity, 1), dtype=np.float32)
         self.not_dones = np.empty((capacity, 1), dtype=np.float32)
@@ -31,10 +39,20 @@ class ReplayBuffer(object):
         return self.capacity if self.full else self.idx
 
     def add(self, obs, action, reward, next_obs, done, done_no_max):
-        self.obses[self.idx] = obs
+        img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs = obs
+        np.copyto(self.img_obses[self.idx], img_obs)
+        np.copyto(self.ee_grip_obses[self.idx], ee_grip_obs)
+        np.copyto(self.ee_pos_rel_base_obses[self.idx], ee_pos_rel_base_obs)
+        np.copyto(self.contact_flags_obses[self.idx], contact_flags_obs)
+
+        next_img_obs, next_ee_grip_obs, next_ee_pos_rel_base_obs, next_contact_flags_obs = next_obs
+        np.copyto(self.next_img_obses[self.idx], next_img_obs)
+        np.copyto(self.next_ee_grip_obses[self.idx], next_ee_grip_obs)
+        np.copyto(self.next_ee_pos_rel_base_obses[self.idx], next_ee_pos_rel_base_obs)
+        np.copyto(self.next_contact_flags_obses[self.idx], next_contact_flags_obs)
+
         np.copyto(self.actions[self.idx], action)
         np.copyto(self.rewards[self.idx], reward)
-        self.next_obses[self.idx] = next_obs
         np.copyto(self.not_dones[self.idx], not done)
         np.copyto(self.not_dones_no_max[self.idx], not done_no_max)
 
@@ -46,13 +64,9 @@ class ReplayBuffer(object):
                                  self.capacity if self.full else self.idx,
                                  size=batch_size)
 
-        obses = list(map(self.obses.__getitem__, idxs))
-        next_obses = list(map(self.next_obses.__getitem__, idxs))
-
-        # Extract the image observations from the batch.
-        img_obses = [obs['im_rgb'] for obs in obses]
+        img_obses = self.img_obses[idxs]
+        next_img_obses = self.next_img_obses[idxs]
         img_obses_aug = img_obses.copy()
-        next_img_obses = [obs['im_rgb'] for obs in next_obses]
         next_img_obses_aug = next_img_obses.copy()
 
         img_obses = torch.as_tensor(img_obses, device=self.device).float()
@@ -71,36 +85,16 @@ class ReplayBuffer(object):
         img_obses_aug = self.aug_trans(img_obses_aug)
         next_img_obses_aug = self.aug_trans(next_img_obses_aug)
 
-        # Turn the list of obs dicts into a dict of concatenated tensors.
-        ee_grip_obses = torch.as_tensor([obs['ee_grip'] for obs in obses], device=self.device).float()
-        ee_pos_rel_base_obses = torch.as_tensor([obs['ee_pos_rel_base'] for obs in obses], device=self.device).float()
-        contact_flags_obses = torch.as_tensor([obs['contact_flags'] for obs in obses], device=self.device).float()
-        next_ee_grip_obses = torch.as_tensor([obs['ee_grip'] for obs in next_obses], device=self.device).float()
-        next_ee_pos_rel_base_obses = torch.as_tensor([obs['ee_pos_rel_base'] for obs in next_obses], device=self.device).float()
-        next_contact_flags_obses = torch.as_tensor([obs['contact_flags'] for obs in next_obses], device=self.device).float()
-        obses = dict(
-            im_rgb = img_obses,
-            ee_grip = ee_grip_obses,
-            ee_pos_rel_base = ee_pos_rel_base_obses,
-            contact_flags = contact_flags_obses
-        )
-        obses_aug = dict(
-            im_rgb = img_obses_aug,
-            ee_grip = ee_grip_obses,
-            ee_pos_rel_base = ee_pos_rel_base_obses,
-            contact_flags = contact_flags_obses
-        )
-        next_obses = dict(
-            im_rgb = next_img_obses,
-            ee_grip = next_ee_grip_obses,
-            ee_pos_rel_base = next_ee_pos_rel_base_obses,
-            contact_flags = next_contact_flags_obses
-        )
-        next_obses_aug = dict(
-            im_rgb = next_img_obses_aug,
-            ee_grip = next_ee_grip_obses,
-            ee_pos_rel_base = next_ee_pos_rel_base_obses,
-            contact_flags = next_contact_flags_obses
-        )
+        ee_grip_obses = torch.as_tensor(self.ee_grip_obses[idxs], device=self.device).float()
+        ee_pos_rel_base_obses = torch.as_tensor(self.ee_pos_rel_base_obses[idxs], device=self.device).float()
+        contact_flags_obses = torch.as_tensor(self.contact_flags_obses[idxs], device=self.device).float()
+        next_ee_grip_obses = torch.as_tensor(self.next_ee_grip_obses[idxs], device=self.device).float()
+        next_ee_pos_rel_base_obses = torch.as_tensor(self.next_ee_pos_rel_base_obses[idxs], device=self.device).float()
+        next_contact_flags_obses = torch.as_tensor(self.next_contact_flags_obses[idxs], device=self.device).float()
+
+        obses = (img_obses, ee_grip_obses, ee_pos_rel_base_obses, contact_flags_obses)
+        next_obses = (next_img_obses, next_ee_grip_obses, next_ee_pos_rel_base_obses, next_contact_flags_obses)
+        obses_aug = (img_obses_aug, ee_grip_obses, ee_pos_rel_base_obses, contact_flags_obses)
+        next_obses_aug = (next_img_obses_aug, next_ee_grip_obses, next_ee_pos_rel_base_obses, next_contact_flags_obses)
 
         return obses, actions, rewards, next_obses, not_dones_no_max, obses_aug, next_obses_aug

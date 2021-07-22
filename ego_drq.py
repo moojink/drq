@@ -101,8 +101,9 @@ class Actor(nn.Module):
         self.apply(utils.weight_init)
 
     def forward(self, obs, detach_encoder=False):
-        encoder_out = self.encoder(obs['im_rgb'], detach=detach_encoder)
-        obs_out = torch.cat((encoder_out, obs['ee_grip'], obs['ee_pos_rel_base'], obs['contact_flags']), dim=-1)
+        img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs = obs
+        encoder_out = self.encoder(img_obs, detach=detach_encoder)
+        obs_out = torch.cat((encoder_out, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs), dim=-1)
 
         mu, log_std = self.trunk(obs_out).chunk(2, dim=-1)
 
@@ -144,9 +145,10 @@ class Critic(nn.Module):
         self.apply(utils.weight_init)
 
     def forward(self, obs, action, detach_encoder=False):
-        assert obs['im_rgb'].size(0) == action.size(0)
-        encoder_out = self.encoder(obs['im_rgb'], detach=detach_encoder)
-        obs_out = torch.cat((encoder_out, obs['ee_grip'], obs['ee_pos_rel_base'], obs['contact_flags']), dim=-1)
+        img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs = obs
+        assert img_obs.size(0) == action.size(0)
+        encoder_out = self.encoder(img_obs, detach=detach_encoder)
+        obs_out = torch.cat((encoder_out, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs), dim=-1)
 
         obs_action = torch.cat([obs_out, action], dim=-1)
         q1 = self.Q1(obs_action)
@@ -219,20 +221,16 @@ class DRQAgent(object):
         return self.log_alpha.exp()
 
     def act(self, obs, sample=False):
-        img_obs = torch.FloatTensor(obs['im_rgb']).to(self.device)
+        img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs = obs
+        img_obs = torch.FloatTensor(img_obs).to(self.device)
         img_obs = img_obs.unsqueeze(0)
-        ee_grip_obs = torch.FloatTensor(obs['ee_grip']).to(self.device)
+        ee_grip_obs = torch.FloatTensor(ee_grip_obs).to(self.device)
         ee_grip_obs = ee_grip_obs.unsqueeze(0)
-        ee_pos_rel_base_obs = torch.FloatTensor(obs['ee_pos_rel_base']).to(self.device)
+        ee_pos_rel_base_obs = torch.FloatTensor(ee_pos_rel_base_obs).to(self.device)
         ee_pos_rel_base_obs = ee_pos_rel_base_obs.unsqueeze(0)
-        contact_flags_obs = torch.FloatTensor(obs['contact_flags']).to(self.device)
+        contact_flags_obs = torch.FloatTensor(contact_flags_obs).to(self.device)
         contact_flags_obs = contact_flags_obs.unsqueeze(0)
-        obs = dict(
-            im_rgb = img_obs,
-            ee_grip = ee_grip_obs,
-            ee_pos_rel_base = ee_pos_rel_base_obs,
-            contact_flags = contact_flags_obs
-        )
+        obs = img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs
         dist = self.actor(obs)
         action = dist.sample() if sample else dist.mean
         action = action.clamp(*self.action_range)
