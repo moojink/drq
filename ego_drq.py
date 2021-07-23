@@ -339,5 +339,11 @@ class DRQAgent(object):
             os.path.join(log_dir, str(step) + '.ckpt')
         )
 
-    def load_checkpoint(self, checkpoint_step):
-        pass
+    def load_checkpoint(self, checkpoint_dir, checkpoint_step):
+        checkpoint_path = checkpoint_dir + '/' + str(checkpoint_step) + '.ckpt'
+        checkpoint = torch.load(checkpoint_path)
+        self.actor.load_state_dict(checkpoint['actor_state_dict'])
+        self.critic.load_state_dict(checkpoint['critic_state_dict'])
+        self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
+        self.critic_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
+        self.log_alpha_optimizer.load_state_dict(checkpoint['log_alpha_optimizer_state_dict'])

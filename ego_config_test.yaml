@@ -1,0 +1,85 @@
+# env
+env: PandaEnv-v0
+checkpoint_dir: ./logs/drq-v12/1/ # *** change this before testing ***
+checkpoint_step: 145000 # *** change this before testing ***
+env_kwargs:
+  view: 3 # *** change this before testing ***
+  gui: false
+  train: false
+  real_time: false
+  seed: 42
+  random_table_texture: ??? # to be specified later
+  num_table_textures_train: ??? # to be specified later
+  random_target_init_pos: true
+  random_panda_init_pos: true
+  image_obs: true
+  add_distractors: ??? # to be specified later
+  z_shift: ??? # to be specified later
+  distractor_color: ??? # to be specified later
+# eval
+seed: 1
+num_eval_episodes: 100
+# misc
+save_video: true
+device: cuda
+# observation
+image_size: 128
+image_pad: 4
+frame_stack: 3
+# global params
+lr: 1e-3
+# IMPORTANT: please use a batch size of 512 to reproduce the results in the paper. Hovewer, with a smaller batch size it still works well.
+batch_size: 128
+
+# agent configuration
+agent:
+  name: drq
+  class: ego_drq.DRQAgent
+  params:
+    obs_shape: ??? # to be specified later
+    proprio_obs_shape: 18 # size after concatenating ee_grip, ee_pos_rel_base, and contact_flags obs
+    action_shape: ??? # to be specified later
+    action_range: ??? # to be specified later
+    device: ${device}
+    encoder_cfg: ${encoder}
+    critic_cfg: ${critic}
+    actor_cfg: ${actor}
+    discount: 0.99
+    init_temperature: 0.1
+    lr: ${lr}
+    actor_update_frequency: 2
+    critic_tau: 0.01
+    critic_target_update_frequency: 2
+    batch_size: ${batch_size}
+
+critic:
+  class: ego_drq.Critic
+  params:
+    encoder_cfg: ${agent.params.encoder_cfg}
+    action_shape: ${agent.params.action_shape}
+    hidden_dim: 1024
+    hidden_depth: 2
+    proprio_obs_shape: ${agent.params.proprio_obs_shape}
+
+actor:
+  class: ego_drq.Actor
+  params:
+    encoder_cfg: ${agent.params.encoder_cfg}
+    action_shape: ${agent.params.action_shape}
+    hidden_depth: 2
+    hidden_dim: 1024
+    log_std_bounds: [-10, 2]
+    proprio_obs_shape: ${agent.params.proprio_obs_shape}
+
+encoder:
+  class: ego_drq.Encoder
+  params:
+      obs_shape: ${agent.params.obs_shape}
+      feature_dim: 50
+
+
+# hydra configuration
+hydra:
+  name: ${env}
+  run:
+    dir: ${checkpoint_dir}
