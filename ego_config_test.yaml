@@ -8,8 +8,8 @@ env_kwargs:
   train: false
   real_time: false
   seed: 42
-  random_table_texture: ??? # to be specified later
-  num_table_textures_train: ??? # to be specified later
+  random_table_texture: false # *** change this before testing ***
+  num_table_textures_train: 0 # *** change this before testing, if testing table texture ***
   random_target_init_pos: true
   random_panda_init_pos: true
   image_obs: true
@@ -18,7 +18,7 @@ env_kwargs:
   distractor_color: ??? # to be specified later
 # eval
 seed: 1
-num_eval_episodes: 100
+num_eval_episodes: 50
 # misc
 save_video: true
 device: cuda
