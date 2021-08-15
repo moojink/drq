@@ -12,15 +12,20 @@ import hydra
 
 class Encoder(nn.Module):
     """Convolutional encoder for image-based observations."""
-    def __init__(self, obs_shape, feature_dim):
+    def __init__(self, view, obs_shape, feature_dim):
         super().__init__()
 
         assert len(obs_shape) == 3
         self.num_layers = 4
         self.num_filters = 32
-        self.output_dim = 35
         self.output_logits = False
         self.feature_dim = feature_dim
+        if str(view) == 'both':
+            # If using both views 1 and 3, use half the hidden dimensions for
+            # view 1 and the other half for view 3.
+            output_dim = feature_dim // 2
+        else:
+            output_dim = feature_dim
 
         self.convs = nn.ModuleList([
             nn.Conv2d(obs_shape[0], self.num_filters, 3, stride=2),
@@ -31,14 +36,14 @@ class Encoder(nn.Module):
 
         if obs_shape[1] == 84: # DeepMind control suite images are 84x84
             conv_out_size = 35
-        elif obs_shape[1] == 128: # our ego panda env images are 128x128
+        elif obs_shape[1] == 128:
             conv_out_size = 57
         else:
             raise ValueError("Unsupported image size.")
 
         self.head = nn.Sequential(
-            nn.Linear(self.num_filters * conv_out_size * conv_out_size, self.feature_dim),
-            nn.LayerNorm(self.feature_dim))
+            nn.Linear(self.num_filters * conv_out_size * conv_out_size, output_dim),
+            nn.LayerNorm(output_dim))
 
         self.outputs = dict()
 
@@ -87,11 +92,12 @@ class Encoder(nn.Module):
 
 class Actor(nn.Module):
     """torch.distributions implementation of an diagonal Gaussian policy."""
-    def __init__(self, encoder_cfg, action_shape, hidden_dim, hidden_depth,
+    def __init__(self, view, encoder_cfg, action_shape, hidden_dim, hidden_depth,
                  log_std_bounds, proprio_obs_shape):
         super().__init__()
 
         self.encoder = hydra.utils.instantiate(encoder_cfg)
+        self.view = view
 
         self.log_std_bounds = log_std_bounds
         self.trunk = utils.mlp(self.encoder.feature_dim + proprio_obs_shape, hidden_dim,
@@ -101,9 +107,15 @@ class Actor(nn.Module):
         self.apply(utils.weight_init)
 
     def forward(self, obs, detach_encoder=False):
-        img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs = obs
-        encoder_out = self.encoder(img_obs, detach=detach_encoder)
-        obs_out = torch.cat((encoder_out, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs), dim=-1)
+        if str(self.view) == 'both':
+            img_obs1, img_obs3, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs = obs
+            encoder_out1 = self.encoder(img_obs1, detach=detach_encoder)
+            encoder_out3 = self.encoder(img_obs3, detach=detach_encoder)
+            obs_out = torch.cat((encoder_out1, encoder_out3, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs), dim=-1)
+        else:
+            img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs = obs
+            encoder_out = self.encoder(img_obs, detach=detach_encoder)
+            obs_out = torch.cat((encoder_out, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs), dim=-1)
 
         mu, log_std = self.trunk(obs_out).chunk(2, dim=-1)
 
@@ -131,10 +143,11 @@ class Actor(nn.Module):
 
 class Critic(nn.Module):
     """Critic network, employes double Q-learning."""
-    def __init__(self, encoder_cfg, action_shape, hidden_dim, hidden_depth, proprio_obs_shape):
+    def __init__(self, view, encoder_cfg, action_shape, hidden_dim, hidden_depth, proprio_obs_shape):
         super().__init__()
 
         self.encoder = hydra.utils.instantiate(encoder_cfg)
+        self.view = view
 
         self.Q1 = utils.mlp(self.encoder.feature_dim + proprio_obs_shape + action_shape[0],
                             hidden_dim, 1, hidden_depth)
@@ -145,10 +158,18 @@ class Critic(nn.Module):
         self.apply(utils.weight_init)
 
     def forward(self, obs, action, detach_encoder=False):
-        img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs = obs
-        assert img_obs.size(0) == action.size(0)
-        encoder_out = self.encoder(img_obs, detach=detach_encoder)
-        obs_out = torch.cat((encoder_out, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs), dim=-1)
+        if str(self.view) == 'both':
+            img_obs1, img_obs3, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs = obs
+            assert img_obs1.size(0) == action.size(0)
+            assert img_obs3.size(0) == action.size(0)
+            encoder_out1 = self.encoder(img_obs1, detach=detach_encoder)
+            encoder_out3 = self.encoder(img_obs3, detach=detach_encoder)
+            obs_out = torch.cat((encoder_out1, encoder_out3, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs), dim=-1)
+        else:
+            img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs = obs
+            assert img_obs.size(0) == action.size(0)
+            encoder_out = self.encoder(img_obs, detach=detach_encoder)
+            obs_out = torch.cat((encoder_out, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs), dim=-1)
 
         obs_action = torch.cat([obs_out, action], dim=-1)
         q1 = self.Q1(obs_action)
@@ -175,7 +196,7 @@ class Critic(nn.Module):
 
 class DRQAgent(object):
     """Data regularized Q: actor-critic method for learning from pixels."""
-    def __init__(self, obs_shape, proprio_obs_shape, action_shape, action_range, device,
+    def __init__(self, view, obs_shape, proprio_obs_shape, action_shape, action_range, device,
                  encoder_cfg, critic_cfg, actor_cfg, discount,
                  init_temperature, lr, actor_update_frequency, critic_tau,
                  critic_target_update_frequency, batch_size):
@@ -186,6 +207,7 @@ class DRQAgent(object):
         self.actor_update_frequency = actor_update_frequency
         self.critic_target_update_frequency = critic_target_update_frequency
         self.batch_size = batch_size
+        self.view = view
 
         self.actor = hydra.utils.instantiate(actor_cfg).to(self.device)
 
@@ -221,16 +243,26 @@ class DRQAgent(object):
         return self.log_alpha.exp()
 
     def act(self, obs, sample=False):
-        img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs = obs
-        img_obs = torch.FloatTensor(img_obs).to(self.device)
-        img_obs = img_obs.unsqueeze(0)
+        if str(self.view) == 'both':
+            img_obs1, img_obs3, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs = obs
+            img_obs1 = torch.FloatTensor(img_obs1).to(self.device)
+            img_obs1 = img_obs1.unsqueeze(0)
+            img_obs3 = torch.FloatTensor(img_obs3).to(self.device)
+            img_obs3 = img_obs3.unsqueeze(0)
+        else:
+            img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs = obs
+            img_obs = torch.FloatTensor(img_obs).to(self.device)
+            img_obs = img_obs.unsqueeze(0)
         ee_grip_obs = torch.FloatTensor(ee_grip_obs).to(self.device)
         ee_grip_obs = ee_grip_obs.unsqueeze(0)
         ee_pos_rel_base_obs = torch.FloatTensor(ee_pos_rel_base_obs).to(self.device)
         ee_pos_rel_base_obs = ee_pos_rel_base_obs.unsqueeze(0)
         contact_flags_obs = torch.FloatTensor(contact_flags_obs).to(self.device)
         contact_flags_obs = contact_flags_obs.unsqueeze(0)
-        obs = img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs
+        if str(self.view) == 'both':
+            obs = img_obs1, img_obs3, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs
+        else:
+            obs = img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs
         dist = self.actor(obs)
         action = dist.sample() if sample else dist.mean
         action = action.clamp(*self.action_range)

@@ -2,8 +2,10 @@
 env: PandaEnv-v0
 checkpoint_dir: ./logs/drq-v12/1/ # *** change this before testing ***
 checkpoint_step: 145000 # *** change this before testing ***
+view: both # *** change this before testing ***
+
 env_kwargs:
-  view: 3 # *** change this before testing ***
+  view: ${view}
   gui: false
   train: false
   real_time: false
@@ -35,6 +37,7 @@ agent:
   name: drq
   class: ego_drq.DRQAgent
   params:
+    view: ${view}
     obs_shape: ??? # to be specified later
     proprio_obs_shape: 18 # size after concatenating ee_grip, ee_pos_rel_base, and contact_flags obs
     action_shape: ??? # to be specified later
@@ -54,6 +57,7 @@ agent:
 critic:
   class: ego_drq.Critic
   params:
+    view: ${agent.params.view}
     encoder_cfg: ${agent.params.encoder_cfg}
     action_shape: ${agent.params.action_shape}
     hidden_dim: 1024
@@ -63,6 +67,7 @@ critic:
 actor:
   class: ego_drq.Actor
   params:
+    view: ${agent.params.view}
     encoder_cfg: ${agent.params.encoder_cfg}
     action_shape: ${agent.params.action_shape}
     hidden_depth: 2
@@ -73,6 +78,7 @@ actor:
 encoder:
   class: ego_drq.Encoder
   params:
+      view: ${agent.params.view}
       obs_shape: ${agent.params.obs_shape}
       feature_dim: 50
 
