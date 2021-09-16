@@ -31,12 +31,12 @@ class VideoRecorder(object):
     def record(self, env):
         if self.enabled:
             if str(self.view) == 'both':
-                frame1 = env.render_overwrite(overwrite_view=1, mode='rgb_array')
+                frame1 = env.env.render_overwrite(overwrite_view=1, mode='rgb_array')
                 self.frames1.append(frame1)
-                frame3 = env.render_overwrite(overwrite_view=3, mode='rgb_array')
+                frame3 = env.env.render_overwrite(overwrite_view=3, mode='rgb_array')
                 self.frames3.append(frame3)
             else:
-                frame = env.render(mode='rgb_array')
+                frame = env.env.render(mode='rgb_array')
                 self.frames.append(frame)
 
     def save(self, file_name):

@@ -95,6 +95,32 @@ def to_np(t):
         return t.cpu().detach().numpy()
 
 
+class ActionRepeatWrapper(gym.Wrapper):
+    """Gym wrapper for repeating actions."""
+    def __init__(self, env, action_repeat, discount):
+        gym.Wrapper.__init__(self, env)
+        self._env = env
+        self._action_repeat = action_repeat
+        self._discount = discount
+
+    def reset(self):
+        return self._env.reset()
+
+    def step(self, action):
+        total_reward = 0.0
+        discount = 1.0
+        for _ in range(self._action_repeat):
+            obs, reward, done, info = self._env.step(action)
+            total_reward += reward * discount
+            discount *= self._discount
+            if done:
+                break
+        return obs, total_reward, done, info
+
+    def render(self, **kwargs):
+        return self._env.render(**kwargs)
+
+
 class FrameStack(gym.Wrapper):
     """Gym wrapper for stacking image observations."""
     def __init__(self, view, env, k):
@@ -116,7 +142,7 @@ class FrameStack(gym.Wrapper):
             high=1,
             shape=((shp[0] * k,) + shp[1:]),
             dtype=env.observation_space['im_rgb'].dtype)
-        self._max_episode_steps = env.env._max_episode_steps
+        self._max_episode_steps = env.env.env._max_episode_steps
 
     def reset(self):
         obs = self.env.reset()
