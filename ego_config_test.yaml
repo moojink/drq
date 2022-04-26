@@ -20,7 +20,7 @@ env_kwargs:
   distractor_color: ??? # to be specified later
 # eval
 seed: 1
-num_eval_episodes: 50
+num_eval_episodes: 20
 # misc
 save_video: true
 device: cuda
