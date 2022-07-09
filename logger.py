@@ -106,6 +106,7 @@ class MetersGroup(object):
         self._meters.clear()
 
 
+
 class Logger(object):
     def __init__(self,
                  log_dir,
@@ -175,6 +176,24 @@ class Logger(object):
         self._try_sw_log(key, value / n, step)
         mg = self._train_mg if key.startswith('train') else self._eval_mg
         mg.log(key, value, n)
+    
+    def eval_log(self, key, value, step, n=1, log_frequency=1):
+        """Same as self.log(), except we don't call self._should_log().
+        In other words, we always log."""
+        assert key.startswith('train') or key.startswith('eval')
+        if type(value) == torch.Tensor:
+            value = value.item()
+        self._try_sw_log(key, value / n, step)
+        mg = self._train_mg if key.startswith('train') else self._eval_mg
+        mg.log(key, value, n)
+
+    def test_log(self, key, value, step, n=1, log_frequency=1):
+        """Just writes to TensorBoard. We handle CSV writing separately."""
+        assert key.startswith('test')
+        if type(value) == torch.Tensor:
+            value = value.item()
+        self._try_sw_log(key, value / n, step)
+
 
     def log_param(self, key, param, step, log_frequency=None):
         if not self._should_log(step, log_frequency):

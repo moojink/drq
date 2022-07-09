@@ -1,27 +1,44 @@
 # env
-env: cartpole_swingup
+env: PandaEnv-v0
+view: 3
+run_dir: ./logs/delete/ # *** change me ***
+
+test_type: table_texture # *** change me ***
+seed: 3 # *** change me ***
+
+train_env_kwargs:
+  view: ${view}
+  gui: false
+  train: true
+  real_time: false
+  random_table_texture: false # *** change me ***
+  num_table_textures_train: 5
+  random_target_init_pos: true
+  random_panda_init_pos: true
+  image_obs: true
+  add_distractors: false # *** change me ***
+  z_shift: 0.
+  distractor_color: mix
 # IMPORTANT: if action_repeat is used the effective number of env steps needs to be
 # multiplied by action_repeat in the result graphs.
 # This is a common practice for a fair comparison.
 # See the 2nd paragraph in Appendix C of SLAC: https://arxiv.org/pdf/1907.00953.pdf
 # See Dreamer TF2's implementation: https://github.com/danijar/dreamer/blob/02f0210f5991c7710826ca7881f19c64a012290c/dreamer.py#L340
-action_repeat: 4
+action_repeat: 2
 # train
-num_train_steps: 1000000
+num_train_steps: 500000
 num_train_iters: 1
 num_seed_steps: 1000
 replay_buffer_capacity: 100000
-seed: 1
 # eval
-eval_frequency: 5000
-num_eval_episodes: 10
+eval_frequency: 2500
+num_eval_episodes: 20
 # misc
 log_frequency_step: 10000
 log_save_tb: true
 save_video: true
 device: cuda
 # observation
-image_size: 84
 image_pad: 4
 frame_stack: 3
 # global params
@@ -32,9 +49,11 @@ batch_size: 128
 # agent configuration
 agent:
   name: drq
-  class: drq.DRQAgent
+  class: ego_drq.DRQAgent
   params:
+    view: ${view}
     obs_shape: ??? # to be specified later
+    proprio_obs_shape: 18 # size after concatenating ee_grip, ee_pos_rel_base, and contact_flags obs
     action_shape: ??? # to be specified later
     action_range: ??? # to be specified later
     device: ${device}
@@ -50,25 +69,30 @@ agent:
     batch_size: ${batch_size}
 
 critic:
-  class: drq.Critic
+  class: ego_drq.Critic
   params:
+    view: ${agent.params.view}
     encoder_cfg: ${agent.params.encoder_cfg}
     action_shape: ${agent.params.action_shape}
     hidden_dim: 1024
     hidden_depth: 2
+    proprio_obs_shape: ${agent.params.proprio_obs_shape}
 
 actor:
-  class: drq.Actor
+  class: ego_drq.Actor
   params:
+    view: ${agent.params.view}
     encoder_cfg: ${agent.params.encoder_cfg}
     action_shape: ${agent.params.action_shape}
     hidden_depth: 2
     hidden_dim: 1024
     log_std_bounds: [-10, 2]
+    proprio_obs_shape: ${agent.params.proprio_obs_shape}
 
 encoder:
-  class: drq.Encoder
+  class: ego_drq.Encoder
   params:
+      view: ${agent.params.view}
       obs_shape: ${agent.params.obs_shape}
       feature_dim: 50
 
@@ -77,4 +101,4 @@ encoder:
 hydra:
   name: ${env}
   run:
-    dir: ./runs/${now:%Y.%m.%d}/${now:%H%M%S}_${hydra.job.override_dirname}
+    dir: ${run_dir}

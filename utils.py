@@ -95,33 +95,97 @@ def to_np(t):
         return t.cpu().detach().numpy()
 
 
+class ActionRepeatWrapper(gym.Wrapper):
+    """Gym wrapper for repeating actions."""
+    def __init__(self, env, action_repeat, discount):
+        gym.Wrapper.__init__(self, env)
+        self._env = env
+        self._action_repeat = action_repeat
+        self._discount = discount
+
+    def reset(self):
+        return self._env.reset()
+
+    def step(self, action):
+        total_reward = 0.0
+        discount = 1.0
+        for _ in range(self._action_repeat):
+            obs, reward, done, info = self._env.step(action)
+            total_reward += reward * discount
+            discount *= self._discount
+            if done:
+                break
+        return obs, total_reward, done, info
+
+    def render(self, **kwargs):
+        return self._env.render(**kwargs)
+
+
 class FrameStack(gym.Wrapper):
-    def __init__(self, env, k):
+    """Gym wrapper for stacking image observations."""
+    def __init__(self, view, env, k):
+        self.view = view
         gym.Wrapper.__init__(self, env)
         self._k = k
-        self._frames = deque([], maxlen=k)
-        shp = env.observation_space.shape
+
+        if str(self.view) == 'both':
+            self._frames1 = deque([], maxlen=k)
+            self._frames3 = deque([], maxlen=k)
+        else:
+            self._frames = deque([], maxlen=k)
+        self._ee_grip_stack = deque([], maxlen=k)
+        self._ee_pos_rel_base_stack = deque([], maxlen=k)
+        self._contact_flags_stack = deque([], maxlen=k)
+        shp = env.observation_space['im_rgb'].shape
         self.observation_space = gym.spaces.Box(
             low=0,
             high=1,
             shape=((shp[0] * k,) + shp[1:]),
-            dtype=env.observation_space.dtype)
-        self._max_episode_steps = env._max_episode_steps
+            dtype=env.observation_space['im_rgb'].dtype)
+        self._max_episode_steps = env.env.env._max_episode_steps
 
     def reset(self):
         obs = self.env.reset()
         for _ in range(self._k):
-            self._frames.append(obs)
+            if str(self.view) == 'both':
+                self._frames1.append(obs['im_rgb1'])
+                self._frames3.append(obs['im_rgb3'])
+            else:
+                self._frames.append(obs['im_rgb'])
+            self._ee_grip_stack.append(obs['ee_grip'])
+            self._ee_pos_rel_base_stack.append(obs['ee_pos_rel_base'])
+            self._contact_flags_stack.append(obs['contact_flags'])
         return self._get_obs()
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
-        self._frames.append(obs)
+        if str(self.view) == 'both':
+            self._frames1.append(obs['im_rgb1'])
+            self._frames3.append(obs['im_rgb3'])
+        else:
+            self._frames.append(obs['im_rgb'])
+        self._ee_grip_stack.append(obs['ee_grip'])
+        self._ee_pos_rel_base_stack.append(obs['ee_pos_rel_base'])
+        self._contact_flags_stack.append(obs['contact_flags'])
         return self._get_obs(), reward, done, info
 
     def _get_obs(self):
-        assert len(self._frames) == self._k
-        return np.concatenate(list(self._frames), axis=0)
+        assert len(self._ee_grip_stack) == self._k
+        assert len(self._ee_pos_rel_base_stack) == self._k
+        assert len(self._contact_flags_stack) == self._k
+        ee_grip_obs = np.concatenate(list(self._ee_grip_stack), axis=0)
+        ee_pos_rel_base_obs = np.concatenate(list(self._ee_pos_rel_base_stack), axis=0)
+        contact_flags_obs = np.concatenate(list(self._contact_flags_stack), axis=0)
+        if str(self.view) == 'both':
+            assert len(self._frames1) == self._k
+            assert len(self._frames3) == self._k
+            img_obs1 = np.concatenate(list(self._frames1), axis=0)
+            img_obs3 = np.concatenate(list(self._frames3), axis=0)
+            return img_obs1, img_obs3, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs
+        else:
+            assert len(self._frames) == self._k
+            img_obs = np.concatenate(list(self._frames), axis=0)
+            return img_obs, ee_grip_obs, ee_pos_rel_base_obs, contact_flags_obs
 
 
 class TanhTransform(pyd.transforms.Transform):
